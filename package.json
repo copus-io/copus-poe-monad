@@ -10,6 +10,7 @@
     "test:e2e": "pnpm circuit:build:v2 && hardhat test test/poe-v2.js test/funded-v2.js",
     "deploy:monad:testnet": "hardhat run scripts/deploy-v2.js --network monadTestnet",
     "deploy:monad:test-token": "hardhat run scripts/deploy-test-token.js --network monadTestnet",
+    "demo:monad:testnet": "hardhat run scripts/demo-testnet-v2.js --network monadTestnet",
     "campaign:prepare:v2": "node scripts/prepare-v2-campaign.js",
     "relayer": "node services/relayer.js",
     "prover": "node services/prover.js",
