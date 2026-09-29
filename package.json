@@ -1,0 +1,36 @@
+{
+  "name": "copus-poe-monad",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Proof of Experience campaigns and private eligibility on Monad Testnet.",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test test/poe.js test/funded-campaigns.js test/evidence.js test/indexer.js test/store.js test/relayer.js test/batch-crypto.js test/issuer-worker.js test/poe-v2.js test/funded-v2.js",
+    "test:zk": "pnpm circuit:build:v2 && hardhat test test/poe-v2.js",
+    "test:e2e": "pnpm circuit:build:v2 && hardhat test test/poe-v2.js test/funded-v2.js",
+    "deploy:monad:testnet": "hardhat run scripts/deploy-v2.js --network monadTestnet",
+    "deploy:monad:test-token": "hardhat run scripts/deploy-test-token.js --network monadTestnet",
+    "campaign:prepare:v2": "node scripts/prepare-v2-campaign.js",
+    "relayer": "node services/relayer.js",
+    "prover": "node services/prover.js",
+    "indexer": "node services/run-indexer.js",
+    "issuer": "node services/issuer-api.js",
+    "issuer:worker": "node services/issuer-worker.js",
+    "settlement:stub": "node services/settlement-stub.js",
+    "clean": "hardhat clean",
+    "circuit:build:v2": "bash scripts/build-circuit-v2.sh",
+    "circuit:setup:dev": "bash scripts/setup-v2-dev-keys.sh"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
+    "circom2": "0.2.23",
+    "circomlib": "2.0.5",
+    "hardhat": "^2.22.18",
+    "snarkjs": "0.7.6"
+  },
+  "dependencies": {
+    "circomlibjs": "0.1.7",
+    "dotenv": "17.2.2",
+    "ethers": "6.17.0"
+  }
+}
