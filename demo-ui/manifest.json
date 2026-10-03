@@ -1,0 +1,8 @@
+{
+  "frontendRepository": "https://github.com/copus-io/copus",
+  "frontendCommit": "5a22dc71e9f823681ab5a585db7f1e1f1c63ca7f",
+  "buildMode": "poe-demo",
+  "sha256": "a03d8d1cf21034702908d54d7735d4d89dcfec020c239c3705a4efb3c1484ad2",
+  "bytes": 23487874,
+  "buildCommand": "VITE_API_BASEURL= VITE_POE_PRODUCT_DEMO=1 pnpm exec vite build --mode poe-demo"
+}

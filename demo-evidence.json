@@ -1,0 +1,37 @@
+{
+  "network": "Monad Testnet",
+  "frontendCommit": "5a22dc71e9f823681ab5a585db7f1e1f1c63ca7f",
+  "verifiedAt": "2026-10-04",
+  "campaignId": "2",
+  "fundingTransaction": "0x8c7c6a3a268d41ccb6a225e9199d5ab846abfa733717e4bef5343642ec89c186",
+  "fundingExplorer": "https://testnet.monadscan.com/tx/0x8c7c6a3a268d41ccb6a225e9199d5ab846abfa733717e4bef5343642ec89c186",
+  "claimTransaction": "0x2a6a7cef801a5e19b7f6a59a27a24eff07f1a7e67c77a2a535a04e08ce7310c6",
+  "claimExplorer": "https://testnet.monadscan.com/tx/0x2a6a7cef801a5e19b7f6a59a27a24eff07f1a7e67c77a2a535a04e08ce7310c6",
+  "verification": [
+    "editor English",
+    "funding English",
+    "claim card English",
+    "real testnet claim confirmed",
+    "ledger English",
+    "reading debit correct across heartbeat and full brand card displayed",
+    "reading ledger debit settled",
+    "production API isolated"
+  ],
+  "isolatedAccount": {
+    "balanceSeconds": 1787,
+    "lifetimeEarnedSeconds": 1800,
+    "lifetimeClaimedSeconds": 1800,
+    "lifetimeSpentSeconds": 13,
+    "pendingIncomeSeconds": 0,
+    "sponsorName": "Copus Creators",
+    "sponsorId": 2
+  },
+  "limitations": "Real funding and Groth16 verification; experience fixtures and isolated TIME ledger. No production Copus API.",
+  "chainId": 10143,
+  "deployment": {
+    "evidenceRegistry": "0x8AbF600a37a9E0dBaDF1c95202389637bE017076",
+    "groth16Verifier": "0xD9Cd08BA1aDF0B1132f9444c573eB28C64D51fc6",
+    "verifierAdapter": "0xedc31075543bCfbbDE77103a6535faAa5f71483A",
+    "fundedSponsorshipCampaigns": "0x0eB8f0d8eef814b035Cf970E9CC76320BC52682d"
+  }
+}

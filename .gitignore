@@ -18,3 +18,9 @@ batch*.json
 receipts*.json
 policy*.json
 coverage/
+
+# Reviewer runtime data and private keys never belong in the repository
+.review-data/
+demo-data/
+operator.json
+session.key

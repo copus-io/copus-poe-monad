@@ -1,5 +1,17 @@
 # Copus PoE on Monad Testnet
 
+## Run the complete demo locally
+
+The repository includes the real English Copus UI. Start with Node.js 22+ and pnpm 10.15+:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm demo:product
+```
+
+First-time reviewers create their own testnet wallet/deployment and supply faucet gas. No private Copus checkout, production backend or shared issuer secret is required. **Follow the complete setup and expected click-by-click flow in [PRODUCT_DEMO.md](PRODUCT_DEMO.md).**
+
+
 This is the Monad Testnet implementation of Copus Proof of Experience (PoE). A sponsor funds a TIME campaign with a test ERC-20 payment, the Copus issuer commits a Merkle root of private experience receipts, and a reader submits a Groth16 proof. The contract checks the exact campaign policy, epoch, evidence age, claim cap, and nullifier before emitting `SponsorshipApproved`. TIME is an off-chain Copus ledger credit, not a tradable token.
 
 **Status:** the v2 contracts are deployed on Monad Testnet and a self-contained proof and claim demo has succeeded. The issuer, prover, relayer and settlement indexer are implemented and tested locally. Copus backend chain registration is still required for real TIME ledger credit. The deployed payment token is a freely mintable test fixture, not USDC.
@@ -53,3 +65,11 @@ No operator keys, Copus receipts, backend credentials, private deployment manife
 The funding token is transferred directly from advertiser to the configured treasury. The contract never holds the token. A test mock is freely mintable and must not be presented as a stablecoin. The proof binds `evidenceRoot`, `ruleHash`, `nullifier`, `campaignId` and `epoch`. The indexer must settle only confirmed canonical events; the backend must enforce idempotency before crediting TIME.
 
 See [Monad documentation](https://docs.monad.xyz/) for network details.
+
+## Actual Copus product demo
+
+Run `pnpm demo:product` with [PRODUCT_DEMO.md](PRODUCT_DEMO.md). This connects the actual sponsor editor, reader card, clock and isolated TIME ledger to the matching v2 chain verifier. [SUBMISSION.md](SUBMISSION.md) contains only technical recording/evidence steps. The on-chain transactions are real; experience summaries and TIME balances are explicitly labeled demo fixtures.
+
+## Latest real UI acceptance (2026-10-04)
+
+The bundled UI created campaign 2, completed a [real proof claim](https://testnet.monadscan.com/tx/0x2a6a7cef801a5e19b7f6a59a27a24eff07f1a7e67c77a2a535a04e08ce7310c6) after [test-token funding](https://testnet.monadscan.com/tx/0x8c7c6a3a268d41ccb6a225e9199d5ab846abfa733717e4bef5343642ec89c186), credited 30 minutes and settled 13 seconds of reading. The browser made no external API requests. See [demo-evidence.json](demo-evidence.json) for exact network identifiers and checks.

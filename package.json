@@ -20,7 +20,13 @@
     "settlement:stub": "node services/settlement-stub.js",
     "clean": "hardhat clean",
     "circuit:build:v2": "bash scripts/build-circuit-v2.sh",
-    "circuit:setup:dev": "bash scripts/setup-v2-dev-keys.sh"
+    "circuit:setup:dev": "bash scripts/setup-v2-dev-keys.sh",
+    "demo:product": "node scripts/review-demo.js",
+    "demo:api": "node services/product-demo.js",
+    "test:product": "hardhat test test/product-demo.js",
+    "demo:frontend-dev": "bash scripts/run-product-demo.sh",
+    "demo:review": "node scripts/review-demo.js",
+    "verify:demo": "node scripts/verify-demo.js"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^6.1.0",
@@ -32,6 +38,10 @@
   "dependencies": {
     "circomlibjs": "0.1.7",
     "dotenv": "17.2.2",
-    "ethers": "6.17.0"
+    "ethers": "6.17.0",
+    "undici": "^6.29.0"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }
