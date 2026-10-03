@@ -36,6 +36,7 @@ function createDemo({ chain, db, secret = crypto.randomBytes(32), origin = proce
   const attentionColumns = new Set(db.prepare('PRAGMA table_info(demo_attention)').all().map((r)=>r.name));
   for (const [column, definition] of [['accrued','INTEGER NOT NULL DEFAULT 0'],['target_type',"TEXT NOT NULL DEFAULT 'PLATFORM'"],['target_id','INTEGER'],['target_title','TEXT']]) { if (!attentionColumns.has(column)) db.exec(`ALTER TABLE demo_attention ADD COLUMN ${column} ${definition}`); }
   const claimColumns = new Set(db.prepare('PRAGMA table_info(demo_claims)').all().map((r)=>r.name));
+  if (!claimColumns.has('expires_at_block')) db.exec('ALTER TABLE demo_claims ADD COLUMN expires_at_block INTEGER');
   if (!claimColumns.has('nullifier')) db.exec('ALTER TABLE demo_claims ADD COLUMN nullifier TEXT');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS demo_event_unique ON demo_claims(event_key) WHERE event_key IS NOT NULL');
   let queue = Promise.resolve();
@@ -163,7 +164,7 @@ function createDemo({ chain, db, secret = crypto.randomBytes(32), origin = proce
         try { result = await serial(() => { reserveOperation(subject,'claim'); return chain.claim(campaign,campaign.draft.mode === 'RETROSPECTIVE' ? campaign.snapshotReceipt : receiptFor(subject,campaign), epoch); }); }
         catch (error) { db.prepare("UPDATE demo_claims SET status='EXPIRED',error=? WHERE subject=? AND campaign=? AND epoch=?").run(error.shortMessage || error.message,subject,campaign.id,String(epoch)); throw error; }
         if (String(result.epoch) !== String(epoch)) throw new Error('chain epoch changed during proving; retry');
-        db.prepare('UPDATE demo_claims SET tx=?,nullifier=? WHERE subject=? AND campaign=? AND epoch=?').run(result.transactionHash,result.nullifier,subject,campaign.id,String(epoch));
+        db.prepare('UPDATE demo_claims SET tx=?,nullifier=?,expires_at_block=? WHERE subject=? AND campaign=? AND epoch=?').run(result.transactionHash,result.nullifier,result.expiresAtBlock || null,subject,campaign.id,String(epoch));
         // UI receives a pending transaction. Only a canonical approval may credit.
         const job = result.finalize().then(({ eventKey,timeSeconds }) => {
           db.prepare("UPDATE demo_claims SET status='SETTLED',event_key=?,seconds=? WHERE subject=? AND campaign=? AND epoch=? AND status='PENDING'").run(eventKey,timeSeconds,subject,campaign.id,String(epoch));
