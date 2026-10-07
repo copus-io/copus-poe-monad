@@ -26,7 +26,8 @@
     "test:product": "node --test test/product-ledger.test.js test/demo-ui-patches.test.js && hardhat test test/product-demo.js",
     "demo:frontend-dev": "bash scripts/run-product-demo.sh",
     "demo:review": "node scripts/review-demo.js",
-    "verify:demo": "node scripts/verify-demo.js"
+    "verify:demo": "node scripts/verify-demo.js",
+    "demo:fork": "node scripts/review-demo.js --fork"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^6.1.0",

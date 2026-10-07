@@ -7,6 +7,7 @@ const { validateCampaignSchedule } = require('./campaign-schedule');
 
 async function createChain() {
   const live = process.env.POE_DEMO_NETWORK === 'testnet';
+  const fork = live && process.env.POE_DEMO_FORK === '1';
   let provider, signer, registry, campaigns, token, deployment;
   if (live) {
     const manifest = process.env.POE_DEMO_DEPLOYMENT || path.join(__dirname, '../deployments/10143-v2.json');
@@ -40,9 +41,9 @@ async function createChain() {
   const explorer = deployment.chainId === 10143 ? 'https://testnet.monadscan.com/tx/' : 'https://sepolia.basescan.org/tx/';
   const wait = async (tx) => { const receipt = await tx.wait(live ? 3 : 1, 180_000); if (!receipt || receipt.status !== 1) throw new Error('transaction did not confirm'); return receipt; };
   return {
-    label: live ? deployment.chainId === 10143 ? 'Monad Testnet' : 'Base Sepolia' : 'Local EVM · real v2 verifier',
-    deployment, live,
-    link: (hash) => live ? explorer + hash : null,
+    label: fork ? 'Local Monad fork · Anvil' : live ? deployment.chainId === 10143 ? 'Monad Testnet' : 'Base Sepolia' : 'Local EVM · real v2 verifier',
+    deployment, live: live && !fork,
+    link: (hash) => live && !fork ? explorer + hash : null,
     async status(campaign, row) {
       const mined=await provider.getTransactionReceipt(row.tx);
       if(!mined)return null;

@@ -62,6 +62,27 @@ pnpm verify:demo
 
 The advanced `pnpm demo:frontend-dev` command is for maintainers with a local current Copus frontend; it is not needed by reviewers.
 
+## Local Monad fork with Anvil
+
+This opt-in mode forks Monad Testnet state but sends transactions only to local Anvil. It deploys independent demo contracts, uses simulated MON, and runs the real Groth16 verifier. It does not reproduce Monad consensus or performance. Public explorer links are hidden for local transactions.
+
+Start Anvil in one terminal (Foundry required):
+
+```sh
+anvil --fork-url https://testnet-rpc.monad.xyz --chain-id 10143 --host 127.0.0.1 --port 8545 --block-time 1 --silent
+```
+
+In this repository, start the demo in a second terminal:
+
+```sh
+pnpm install --frozen-lockfile
+POE_REVIEW_DATA="$PWD/.review-data/monad-fork" pnpm demo:fork
+```
+
+Open <http://localhost:8792/time-sponsors?sponsorshipDemo=1> and follow the same walkthrough above. The command verifies Anvil fork metadata and requires a loopback RPC. It gives the demo operator 100 simulated MON; no faucet or browser wallet is required. `POE_FORK_RPC_URL` overrides the local RPC URL. Keep both commands running.
+
+The explicit data directory above keeps local wallet/deployment/ledger files in the ignored `.review-data/` folder. Do not supply public-deployment wallet or manifest overrides. Restarting Anvil without persisted state creates a fresh chain: use a new data directory (for example `.review-data/monad-fork-2`) and clear the localhost demo cookie or use a new browser profile. Restarting only the demo while Anvil remains running reuses its existing deployment.
+
 ### Local TIME ledger API
 
 `GET /client/user/time/ledger?direction=ALL&pageIndex=1&pageSize=30` returns only the signed session's records. `direction` accepts `ALL`, `IN` (settled sponsorship credits), or `OUT` (settled attention debits). Filtering precedes counting and pagination; `pageIndex` is one-based (maximum 1,000,000) and `pageSize` is 1–100. Rows sort newest first, with stable ID ordering for equal timestamps. The demo returns individual entries (`entryCount: 1`); `merge=true` does not aggregate them. Group expansion is not implemented.
