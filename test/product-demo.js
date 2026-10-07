@@ -5,6 +5,21 @@ const { createChain } = require('../services/product-chain');
 
 describe('Real product sponsorship demo', function () {
   this.timeout(120000);
+  it('rejects invalid schedules before any transaction, including retrospective evidence', async () => {
+    const chain=await createChain();
+    const hre=require('hardhat');
+    const signer=(await hre.ethers.getSigners())[0];
+    const before=await hre.ethers.provider.getTransactionCount(signer.address);
+    for (const draft of [
+      {mode:'RETROSPECTIVE',unlimited:false},
+      {mode:'ONGOING',unlimited:true,startsAt:'2000-01-01T00:00:00Z'},
+      {mode:'RETROSPECTIVE',unlimited:false,startsAt:'2099-01-02T00:00:00Z',endsAt:'2099-01-01T00:00:00Z'},
+    ]) {
+      let error;try{await chain.fund(draft,{},{});}catch(e){error=e;}
+      expect(error?.message).to.match(/time (is required|must be)/);
+      expect(await hre.ethers.provider.getTransactionCount(signer.address)).to.equal(before);
+    }
+  });
   it('rejects forged identity/origin, funds a v2 campaign, rejects ineligible and duplicate claims, and credits only a confirmed approval', async () => {
     const chain = await createChain();
     const db = new DatabaseSync(':memory:');
@@ -23,10 +38,20 @@ describe('Real product sponsorship demo', function () {
       const a = await request('/account',undefined,{'oai-authenticated-user-id':'forged'});
       expect(a.data.balanceSeconds).to.equal(0);
       const identity=cookie;
-      const published=await request('/sponsorship/publish',{brandName:'Copus creators',title:'Support curious readers',description:'More time to discover independent creators.',coverUrl:'https://www.copus.io/favicon.ico',destinationUrl:'https://www.copus.io',totalTimeMinutes:6000,claimTimeMinutes:30,match:'ALL',mode:'ONGOING',unlimited:true,publicRules:[{type:'work_count',value:1}],hiddenRules:[{type:'followers',value:5}]});
+      const published=await request('/sponsorship/publish',{brandName:'Copus creators',title:'Support curious readers',description:'More time to discover independent creators.',coverUrl:'https://www.copus.io/favicon.ico',destinationUrl:'https://www.copus.io',totalTimeMinutes:6000,claimTimeMinutes:30,match:'ALL',mode:'ONGOING',unlimited:true,startsAt:new Date(Date.now()+3600000).toISOString(),publicRules:[{type:'work_count',value:1}],hiddenRules:[{type:'followers',value:5}]});
       expect(published.status,published.msg).to.equal(1);
       expect(JSON.stringify(published)).not.to.include('followers');
       const id=Number(published.data.campaignId);
+      const provider=require('hardhat').ethers.provider;
+      const start=JSON.parse(db.prepare('SELECT data FROM demo_campaigns WHERE id=?').get(String(id)).data).startsAt;
+      expect((await provider.getBlock('latest')).timestamp).to.be.lessThan(start);
+      expect((await request('/sponsors')).data[0].poeScheduleStatus).to.equal('SCHEDULED');
+      expect((await request('/poe/claims',{campaignId:id})).msg).to.equal('Campaign has not started yet');
+      if ((await provider.getBlock('latest')).timestamp < start) {
+        await provider.send('evm_setNextBlockTimestamp',[start]);
+        await provider.send('evm_mine',[]);
+      }
+      clock=(await provider.getBlock('latest')).timestamp*1000;
       await request('/poe/demo/profile',{profile:'ineligible'});
       const rejected=await request('/poe/claims',{campaignId:id});
       expect(rejected.status).to.equal(0);
