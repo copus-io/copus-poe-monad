@@ -21,7 +21,7 @@ After setup, open **http://localhost:8792/time-sponsors?sponsorshipDemo=1**. Kee
 
 ## Expected UI walkthrough
 
-1. **Create a sponsorship.** The editor starts with an English campaign. Adjust the brand, title, description, cover, budget and claim amount. The preview is the actual reader card.
+1. **Apply and create a sponsorship.** Open **Sponsor TIME** to see the advertiser introduction, then click **Start sponsoring** or the **Apply to sponsor** button. The demo approves immediately and opens the campaign panel without a contact form or review wait. Approval is saved to your local demo session. The editor starts with an English campaign. Adjust the brand, title, description, cover, budget and claim amount. The preview is the actual reader card.
 2. **Set eligibility.** Add public conditions, choose all/any matching and optionally add private conditions. Private values do not appear on the reader card. Experience facts are fixed demo fixtures, not production user records.
 3. **Continue to funding.** Click **Confirm and continue to funding**. This opens the payment page directly; there is no extra review/save-plan screen.
 4. **Fund and publish.** Click **Fund and publish**. A real transaction transfers **1 freely mintable test token** to the treasury and publishes the campaign. The USD budget shown in the editor is a product preview, not a real charge or a TIME exchange rate. Open the funding transaction link if you want to inspect the receipt.

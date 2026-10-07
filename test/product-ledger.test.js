@@ -25,6 +25,18 @@ async function harness(t, db=new DatabaseSync(':memory:')) {
   return {db,demo,chain,request,subject,campaign,advance:n=>clock+=n,now:()=>clock};
 }
 
+test('sponsor application opens access immediately for only the signed demo session',async t=>{
+  const h=await harness(t);
+  assert.equal((await h.request('/sponsorship/access')).data.status,'NONE');
+  assert.equal((await h.request('/sponsorship/apply',{})).data.status,'APPROVED');
+  assert.equal((await h.request('/sponsorship/access')).data.status,'APPROVED');
+  assert.equal((await h.request('/sponsorship/apply',{})).data.status,'APPROVED');
+  assert.equal((await h.request('/sponsorship/access',undefined,'')).data.status,'NONE');
+  assert.equal((await h.request('/sponsorship/dashboard')).data.draft.network,'solana-devnet');
+  assert.equal(h.db.prepare('SELECT COUNT(*) n FROM demo_campaigns').get().n,0);
+  assert.equal((await h.request('/account')).data.balanceSeconds,0);
+});
+
 test('ledger filters before pagination, isolates identities and returns each campaign source',async t=>{
   const h=await harness(t);h.campaign('1','Brand A');h.campaign('2','Brand B');
   const ins=h.db.prepare('INSERT INTO demo_claims(subject,campaign,epoch,status,seconds,settled_at) VALUES(?,?,?,?,?,?)');

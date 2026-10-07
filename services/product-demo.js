@@ -34,6 +34,8 @@ function createDemo({ chain, db, secret = crypto.randomBytes(32), origin = proce
     CREATE TABLE IF NOT EXISTS demo_income_ack(subject TEXT PRIMARY KEY,seconds INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS demo_limits(scope TEXT PRIMARY KEY,started INTEGER NOT NULL,used INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS demo_attention(id TEXT PRIMARY KEY,subject TEXT NOT NULL,started INTEGER NOT NULL,last_seen INTEGER NOT NULL,charged INTEGER NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'ACTIVE');`);
+  const sessionColumns = new Set(db.prepare('PRAGMA table_info(demo_sessions)').all().map((r) => r.name));
+  if (!sessionColumns.has('sponsor_approved')) db.exec('ALTER TABLE demo_sessions ADD COLUMN sponsor_approved INTEGER NOT NULL DEFAULT 0');
   const attentionColumns = new Set(db.prepare('PRAGMA table_info(demo_attention)').all().map((r)=>r.name));
   for (const [column, definition] of [['accrued','INTEGER NOT NULL DEFAULT 0'],['target_type',"TEXT NOT NULL DEFAULT 'PLATFORM'"],['target_id','INTEGER'],['target_title','TEXT']]) { if (!attentionColumns.has(column)) db.exec(`ALTER TABLE demo_attention ADD COLUMN ${column} ${definition}`); }
   const claimColumns = new Set(db.prepare('PRAGMA table_info(demo_claims)').all().map((r)=>r.name));
@@ -162,15 +164,20 @@ function createDemo({ chain, db, secret = crypto.randomBytes(32), origin = proce
     // proxy. Credentials and issuer facts cannot be selected by the browser.
     if (publicMode ? req.headers.host !== new URL(origin).host : !/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.headers.host || '')) { res.statusCode = 403; return reply(null, 0, 'local demo only'); }
     if (req.method !== 'GET' && ![origin, origin.replace('localhost', '127.0.0.1')].includes(req.headers.origin)) { res.statusCode = 403; return reply(null, 0, 'untrusted origin'); }
-    const subject = session(req, res);
     try {
+      const subject = session(req, res);
       const base = '/client/user/time';
       if (url.pathname === `${base}/poe/demo` && req.method === 'GET') return reply({ chain: chain.label, live: chain.live, fixture: true, ledger: 'isolated demo', profile: db.prepare('SELECT profile FROM demo_sessions WHERE id=?').get(subject).profile });
       if (url.pathname === `${base}/poe/demo/profile` && req.method === 'POST') {
         const input = await body(req); if (!['eligible','ineligible'].includes(input.profile)) throw new Error('invalid demo profile');
         db.prepare('UPDATE demo_sessions SET profile=? WHERE id=?').run(input.profile, subject); return reply(true);
       }
-      if (url.pathname === `${base}/sponsorship/access`) return reply({ status: 'APPROVED', brand: 'Copus creator' });
+      if (url.pathname === `${base}/sponsorship/access` && req.method === 'GET') return reply({ status: db.prepare('SELECT sponsor_approved FROM demo_sessions WHERE id=?').get(subject).sponsor_approved ? 'APPROVED' : 'NONE', brand: 'Copus creator' });
+      if (url.pathname === `${base}/sponsorship/apply` && req.method === 'POST') {
+        await body(req);
+        db.prepare('UPDATE demo_sessions SET sponsor_approved=1 WHERE id=?').run(subject);
+        return reply({ status: 'APPROVED', brand: 'Copus creator' });
+      }
       if (url.pathname === `${base}/sponsorship/dashboard`) return reply({ draft: JSON.parse(db.prepare('SELECT data FROM demo_drafts WHERE subject=?').get(subject)?.data || JSON.stringify({network,brandName:'Copus Creators',title:'Give curiosity another 30 minutes',description:'Discover independent creators. Prove you qualify without sharing your private reading history.',coverUrl:'/assets/og-copus-v2.png',destinationUrl:'https://www.copus.io',totalTimeHours:100,claimTimeMinutes:30,unlimited:true,match:'ALL',mode:'ONGOING',publicRules:[{type:'work_count',value:1}],hiddenRules:[]})),
         paymentsEnabled: true, publishingEnabled: true, poeEnabled: true,
         sponsors: campaigns().filter((c) => c.owner === subject).map((c) => ({ ...sponsor(subject,c), state: 1 })) });
