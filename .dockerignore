@@ -1,0 +1,15 @@
+.git
+node_modules
+.env*
+.review-data
+demo-data
+artifacts
+cache
+target
+zk-v2-build
+operator.json
+*.db*
+*.key
+*-keypair.json
+wallet.json
+deployments

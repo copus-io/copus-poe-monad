@@ -2,6 +2,23 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
 describe("Funded PoE v2 evidence freshness", function () {
+  it("allows ten-minute allocations and rejects smaller ones before payment", async function () {
+    const [, issuer, advertiser, treasury] = await ethers.getSigners();
+    const registry = await (await ethers.getContractFactory("EvidenceRegistry")).deploy(issuer.address);
+    const verifier = await (await ethers.getContractFactory("MockPoEVerifier")).deploy();
+    const usdc = await (await ethers.getContractFactory("MockUSDC")).deploy();
+    const campaigns = await (await ethers.getContractFactory("FundedSponsorshipCampaignsV2"))
+      .deploy(registry.target, verifier.target, treasury.address, usdc.target);
+    await usdc.mint(advertiser.address, 1_000_000n);
+    await usdc.connect(advertiser).approve(campaigns.target, 1_000_000n);
+    const start = (await ethers.provider.getBlock("latest")).timestamp + 10;
+    const args = [usdc.target, 1_000_000n, ethers.id("manifest"), ethers.id("policy"), ethers.ZeroHash, 0, start, 0, 6000];
+    await expect(campaigns.connect(advertiser).fundAndActivate(...args, 9, 0))
+      .to.be.reverted;
+    expect(await usdc.balanceOf(treasury.address)).to.equal(0);
+    await campaigns.connect(advertiser).fundAndActivate(...args, 10, 0);
+    expect(await usdc.balanceOf(treasury.address)).to.equal(1_000_000n);
+  });
   it("fails before charging when a retrospective precomputed campaign ID is stale", async function () {
     const [, issuer, advertiser, treasury] = await ethers.getSigners();
     const registry = await (await ethers.getContractFactory("EvidenceRegistry")).deploy(issuer.address);

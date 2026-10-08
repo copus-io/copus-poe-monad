@@ -1,0 +1,8 @@
+# BEGIN copus-poe-monad-demo
+monad.copus.io {
+    redir / /time-sponsors 302
+    reverse_proxy copus-poe-monad-demo:8792
+    encode gzip
+    header X-Robots-Tag "noindex, nofollow"
+}
+# END copus-poe-monad-demo

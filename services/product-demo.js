@@ -190,7 +190,7 @@ function createDemo({ chain, db, secret = crypto.randomBytes(32), origin = proce
         for (const key of ['title','brandName','description','coverUrl','destinationUrl']) if (typeof draft[key] !== 'string' || !draft[key].trim() || draft[key].length > 2048) throw new Error(`invalid ${key}`);
         if (!['ONGOING','RETROSPECTIVE'].includes(draft.mode)) throw new Error('invalid campaign mode');
         if (new URL(draft.destinationUrl).protocol !== 'https:') throw new Error('campaign link must use HTTPS');
-        if (![draft.totalTimeMinutes, draft.claimTimeMinutes].every((n) => Number.isSafeInteger(n) && n >= 30 && n <= 10_000_000)
+        if (![draft.totalTimeMinutes, draft.claimTimeMinutes].every((n) => Number.isSafeInteger(n) && n >= 10 && n <= 10_000_000)
           || draft.totalTimeMinutes % draft.claimTimeMinutes) throw new Error('TIME budget must be divisible by allocation');
         if (draft.mode === 'RETROSPECTIVE' && draft.publicRules.some((r) => r.type === 'brand_visit')) throw new Error('brand visit requires ongoing mode');
         validateCampaignSchedule(draft,now());

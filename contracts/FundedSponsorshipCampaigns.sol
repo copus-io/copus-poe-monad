@@ -109,7 +109,7 @@ contract FundedSponsorshipCampaigns {
     ) public virtual returns (uint256 campaignId) {
         if (acceptedToken != fundingToken || paymentAmount == 0 || manifestHash == bytes32(0) || ruleHash == bytes32(0)
             || startsAt < block.timestamp || (endsAt != 0 && endsAt <= startsAt)
-            || totalTimeMinutes < 30 || timePerClaimMinutes < 30 || timePerClaimMinutes > totalTimeMinutes
+            || totalTimeMinutes < 10 || timePerClaimMinutes < 10 || timePerClaimMinutes > totalTimeMinutes
             || totalTimeMinutes % timePerClaimMinutes != 0
             || (claimPeriodSeconds != 0 && claimPeriodSeconds < 60)
             || (mode == EligibilityMode.RETROSPECTIVE && snapshotRoot == bytes32(0))) revert InvalidCampaign();

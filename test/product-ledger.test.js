@@ -141,3 +141,15 @@ test('top sponsors aggregate only the current reader settled credits with stable
   assert.ok(rows.every(r=>r.sourceType==='BRAND'));
   assert.deepEqual((await h.request('/ledger/top-sponsors',undefined,'')).data,[]);
 });
+
+
+test('ten minute allocations publish; smaller allocations never reach funding',async t=>{
+  const h=await harness(t);let calls=0;
+  h.chain.fund=async(draft)=>{calls++;return {id:'100',startsAt:Math.floor(h.now()/1000)+30,period:0,transactionHash:'funding-test'};};
+  const draft={brandName:'Brand',title:'Ten minutes',description:'Minimum allocation',coverUrl:'/cover.png',destinationUrl:'https://example.com',totalTimeMinutes:6000,claimTimeMinutes:9,match:'ALL',mode:'ONGOING',unlimited:true,publicRules:[],hiddenRules:[]};
+  assert.equal((await h.request('/sponsorship/publish',draft)).status,0);
+  assert.equal(calls,0);
+  const result=await h.request('/sponsorship/publish',{...draft,claimTimeMinutes:10});
+  assert.equal(result.status,1,result.msg);assert.equal(calls,1);
+  assert.equal((await h.request('/sponsors')).data[0].claimSeconds,600);
+});

@@ -1,0 +1,28 @@
+services:
+  demo:
+    image: copus-poe-monad-demo:${POE_RELEASE_COMMIT:?Exact committed release required}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: copus-poe-monad-demo
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 2
+    mem_limit: 2g
+    pids_limit: 256
+    tmpfs: [/tmp:size=256m]
+    env_file: ${POE_DEMO_HOME:?Private runtime directory required}/runtime.env
+    environment:
+      POE_RELEASE_COMMIT: ${POE_RELEASE_COMMIT}
+      POE_DEMO_CHAIN: monad-testnet
+      POE_DEMO_PUBLIC_ORIGIN: https://monad.copus.io
+    volumes:
+      - ${POE_DEMO_HOME}/data:/data
+      - ${POE_DEMO_HOME}/secrets:/run/demo-secrets:ro
+    networks: [demo]
+networks:
+  demo:
+    name: copus-poe-monad-demo
