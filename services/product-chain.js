@@ -56,7 +56,7 @@ async function createChain() {
     },
     async fund(draft, prepared, receipt) {
       const now = (await provider.getBlock('latest')).timestamp;
-      const {startsAt:start,endsAt:end}=validateCampaignSchedule(draft,now*1000);
+      validateCampaignSchedule(draft,now*1000);
       const id = (await campaigns.campaignCount()) + 1n;
       const retrospective = draft.mode === 'RETROSPECTIVE';
       let batch = null, batchId = null;
@@ -72,6 +72,9 @@ async function createChain() {
       }
       await wait(await token.approve(campaigns.target, payment));
       const period = draft.repeatClaim ? Number(draft.claimTimeMinutes) * 60 : 0;
+      // Evidence, minting and approval may take longer than the default start delay.
+      const readyAt = (await provider.getBlock('latest')).timestamp;
+      const {startsAt:start,endsAt:end}=validateCampaignSchedule(draft,readyAt*1000);
       const funded = await wait(await campaigns.fundAndActivateWithExpectedId(id, token.target, payment, prepared.manifestHash, prepared.ruleHash,
         batch ? fieldHex(batch.root) : ethers.ZeroHash, retrospective ? 1 : 0, start, end,
         draft.totalTimeMinutes, draft.claimTimeMinutes, period));
