@@ -3,9 +3,11 @@ const path = require('node:path');
 const { ethers } = require('ethers');
 const { buildBatchV2, fieldHex } = require('../lib/poe-v2');
 const { prove } = require('./prover');
+const { validateCampaignSchedule } = require('./campaign-schedule');
 
 async function createChain() {
   const live = process.env.POE_DEMO_NETWORK === 'testnet';
+  const fork = live && process.env.POE_DEMO_FORK === '1';
   let provider, signer, registry, campaigns, token, deployment;
   if (live) {
     const manifest = process.env.POE_DEMO_DEPLOYMENT || path.join(__dirname, '../deployments/10143-v2.json');
@@ -39,9 +41,9 @@ async function createChain() {
   const explorer = deployment.chainId === 10143 ? 'https://testnet.monadscan.com/tx/' : 'https://sepolia.basescan.org/tx/';
   const wait = async (tx) => { const receipt = await tx.wait(live ? 3 : 1, 180_000); if (!receipt || receipt.status !== 1) throw new Error('transaction did not confirm'); return receipt; };
   return {
-    label: live ? deployment.chainId === 10143 ? 'Monad Testnet' : 'Base Sepolia' : 'Local EVM · real v2 verifier',
-    deployment, live,
-    link: (hash) => live ? explorer + hash : null,
+    label: fork ? 'Local Monad fork · Anvil' : live ? deployment.chainId === 10143 ? 'Monad Testnet' : 'Base Sepolia' : 'Local EVM · real v2 verifier',
+    deployment, live: live && !fork,
+    link: (hash) => live && !fork ? explorer + hash : null,
     async status(campaign, row) {
       const mined=await provider.getTransactionReceipt(row.tx);
       if(!mined)return null;
@@ -53,6 +55,8 @@ async function createChain() {
       return {eventKey:`${deployment.chainId}:${row.tx}:${log.index}`,timeSeconds:campaign.draft.claimTimeMinutes*60};
     },
     async fund(draft, prepared, receipt) {
+      const now = (await provider.getBlock('latest')).timestamp;
+      validateCampaignSchedule(draft,now*1000);
       const id = (await campaigns.campaignCount()) + 1n;
       const retrospective = draft.mode === 'RETROSPECTIVE';
       let batch = null, batchId = null;
@@ -67,17 +71,14 @@ async function createChain() {
         await wait(await token.mint(await signer.getAddress(), payment));
       }
       await wait(await token.approve(campaigns.target, payment));
-      const now = (await provider.getBlock('latest')).timestamp;
-      const start = draft.startsAt ? Math.floor(new Date(draft.startsAt).getTime() / 1000) : now + (live ? 30 : 2);
-      if (!Number.isSafeInteger(start) || start <= now) throw new Error('start time must be in the future');
-      const end = draft.unlimited ? 0 : Math.floor(new Date(draft.endsAt).getTime() / 1000);
-      if (!Number.isSafeInteger(end) || end < 0 || (end && end <= start)) throw new Error('invalid end time');
       const period = draft.repeatClaim ? Number(draft.claimTimeMinutes) * 60 : 0;
+      // Evidence, minting and approval may take longer than the default start delay.
+      const readyAt = (await provider.getBlock('latest')).timestamp;
+      const {startsAt:start,endsAt:end}=validateCampaignSchedule(draft,readyAt*1000);
       const funded = await wait(await campaigns.fundAndActivateWithExpectedId(id, token.target, payment, prepared.manifestHash, prepared.ruleHash,
         batch ? fieldHex(batch.root) : ethers.ZeroHash, retrospective ? 1 : 0, start, end,
         draft.totalTimeMinutes, draft.claimTimeMinutes, period));
-      if (!live) await provider.send('evm_setNextBlockTimestamp', [start]);
-      if (!live) await provider.send('evm_mine', []);
+      // Funding must not advance local chain time past a sponsor's chosen start.
       return { id: id.toString(), transactionHash: funded.hash, startsAt: start, period, batchId,
         root: batch?.root.toString(), merkleProof: batch && { pathElements: batch.proof(0).pathElements.map(String), pathIndices: batch.proof(0).pathIndices }, paymentUnits: payment.toString() };
     },

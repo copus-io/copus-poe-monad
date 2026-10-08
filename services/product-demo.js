@@ -8,6 +8,7 @@ const { DatabaseSync } = require('node:sqlite');
 const { prepareV2Campaign } = require('../lib/policy-v2-source');
 const { normalizePolicy, normalizeReceipt, matches } = require('../lib/poe-v2');
 const { createChain } = require('./product-chain');
+const { validateCampaignSchedule } = require('./campaign-schedule');
 
 function fixture(secret, policy, visited = false, profile = 'eligible') {
   // Fixed issuer fixtures, not thresholds copied from the advertiser's input.
@@ -38,6 +39,12 @@ function createDemo({ chain, db, secret = crypto.randomBytes(32), origin = proce
   const claimColumns = new Set(db.prepare('PRAGMA table_info(demo_claims)').all().map((r)=>r.name));
   if (!claimColumns.has('expires_at_block')) db.exec('ALTER TABLE demo_claims ADD COLUMN expires_at_block INTEGER');
   if (!claimColumns.has('nullifier')) db.exec('ALTER TABLE demo_claims ADD COLUMN nullifier TEXT');
+  if (!claimColumns.has('settled_at')) db.exec('ALTER TABLE demo_claims ADD COLUMN settled_at INTEGER');
+  if (!attentionColumns.has('closed_at')) {
+    db.exec('ALTER TABLE demo_attention ADD COLUMN closed_at INTEGER');
+    // Best available legacy session timestamp; old claims have no recorded settlement time.
+    db.exec("UPDATE demo_attention SET closed_at=last_seen WHERE status='CLOSED'");
+  }
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS demo_event_unique ON demo_claims(event_key) WHERE event_key IS NOT NULL');
   let queue = Promise.resolve();
   const serial = (fn) => { const result = queue.then(fn); queue = result.catch(() => {}); return result; };
@@ -77,8 +84,13 @@ function createDemo({ chain, db, secret = crypto.randomBytes(32), origin = proce
     return { balanceSeconds: total, lifetimeEarnedSeconds: earned, lifetimeClaimedSeconds: earned,
       lifetimeSpentSeconds: spent, pendingIncomeSeconds: Math.max(0,earned-acknowledged), sponsorName: activeSponsor?.draft.brandName || '', sponsorId: activeSponsor ? Number(activeSponsor.id) : 0 };
   }
+  const scheduleStatus = c => {
+    const at=Math.floor(now()/1000);
+    const end=c.draft.unlimited?0:Math.floor(Date.parse(c.draft.endsAt)/1000);
+    return at<c.startsAt?'SCHEDULED':end && at>=end?'ENDED':'ACTIVE';
+  };
   const sponsor = (subject, c) => {
-    const epoch = c.period ? Math.floor(Date.now() / 1000 / c.period) : 0;
+    const epoch = c.period ? Math.floor(now() / 1000 / c.period) : 0;
     const claim = db.prepare('SELECT status,tx,error FROM demo_claims WHERE subject=? AND campaign=? AND epoch=?').get(subject, c.id, String(epoch));
     const requirements = c.draft.publicRules.map((rule, index) => {
       const rulePolicy = { ...c.policy, match: 'ALL', rules: [c.policy.rules[index]] };
@@ -89,20 +101,50 @@ function createDemo({ chain, db, secret = crypto.randomBytes(32), origin = proce
       title: c.draft.title, description: c.draft.description, coverUrl: c.draft.coverUrl,
       linkUrl: c.draft.destinationUrl, linkLabel: 'Visit sponsor', claimSeconds: c.draft.claimTimeMinutes * 60,
       claimantCount: db.prepare("SELECT COUNT(*) total FROM demo_claims WHERE campaign=? AND status='SETTLED'").get(c.id).total,
-      eligible: eligible(subject, c) && (!claim || claim.status === 'EXPIRED') && Date.now() / 1000 >= c.startsAt,
+      eligible: eligible(subject, c) && (!claim || claim.status === 'EXPIRED') && scheduleStatus(c)==='ACTIVE',
+      poeScheduleStatus:scheduleStatus(c),startsAt:new Date(c.startsAt*1000).toISOString(),
       poeCampaignId: Number(c.id), poeMatch: c.draft.match, poeClaimStatus: claim?.status,
       poeTransactionUrl: claim?.tx ? chain.link(claim.tx) : null, poeChain: chain.label,
       requirements: requirements.length ? requirements : [{ code: 'Issuer-approved experience', met: eligible(subject, c) }],
       poeHasHiddenConditions: c.draft.hiddenRules.length > 0, poeClaimError: claim?.error };
   };
-  function ledger(subject) {
-    const credits = db.prepare("SELECT rowid id,campaign,seconds,tx FROM demo_claims WHERE subject=? AND status='SETTLED' ORDER BY rowid DESC").all(subject).map((r) => ({ id:r.id,
-      fromUserId:900001,targetUserId:900002,amountSeconds:r.seconds,targetType:'SPONSOR',triggerType:'POE_SPONSOR',createTime:new Date().toISOString(),
-      fromUsername:campaigns().find((c)=>c.id===r.campaign)?.draft.brandName || 'Sponsor',targetUsername:'Demo reader',targetTitle:'Sponsored TIME',entryCount:1 }));
-    const debits = db.prepare('SELECT rowid id,charged,target_type,target_id,target_title,last_seen FROM demo_attention WHERE subject=? AND charged>0 ORDER BY rowid DESC').all(subject).map((r)=>({id:1000000+r.id,
-      fromUserId:900002,targetUserId:900003,amountSeconds:r.charged,targetType:r.target_type,targetId:r.target_id,triggerType:'READING',createTime:new Date(r.last_seen).toISOString(),
+  function ledger(subject, params) {
+    const direction = params.get('direction') || 'ALL';
+    if (!['ALL','IN','OUT'].includes(direction)) throw new Error('invalid ledger direction');
+    const pageNumber = (key, fallback, max) => {
+      const value = params.get(key) ?? String(fallback);
+      if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value)>max) throw new Error(`invalid ${key}`);
+      return Number(value);
+    };
+    const pageIndex = pageNumber('pageIndex',1,1_000_000);
+    const pageSize = pageNumber('pageSize',30,100);
+    const byId = new Map(campaigns().map(c=>[c.id,c]));
+    const credits = direction==='OUT' ? [] : db.prepare("SELECT rowid id,campaign,seconds,tx,settled_at FROM demo_claims WHERE subject=? AND status='SETTLED' ORDER BY rowid DESC").all(subject).map(r => {
+      const campaign=byId.get(r.campaign);
+      const name=campaign?.draft.brandName || 'Sponsor';
+      return { id:r.id, direction:'IN',
+        fromUserId:900001,targetUserId:900002,amountSeconds:r.seconds,targetType:'SPONSOR',triggerType:'POE_SPONSOR',
+        createTime:r.settled_at===null?null:new Date(r.settled_at).toISOString(),timeSource:r.settled_at===null?'UNKNOWN':'SETTLEMENT',
+        fromUsername:name,targetUsername:'Demo reader',targetTitle:'Sponsored TIME',entryCount:1,
+        campaignId:r.campaign,sponsorId:Number(r.campaign),sponsorName:name,campaignTitle:campaign?.draft.title || '',transactionHash:r.tx };
+    });
+    const debits = direction==='IN' ? [] : db.prepare('SELECT rowid id,charged,target_type,target_id,target_title,closed_at FROM demo_attention WHERE subject=? AND charged>0 ORDER BY rowid DESC').all(subject).map(r=>({id:1000000+r.id,direction:'OUT',
+      fromUserId:900002,targetUserId:900003,amountSeconds:r.charged,targetType:r.target_type,targetId:r.target_id,triggerType:'READING',
+      createTime:r.closed_at===null?null:new Date(r.closed_at).toISOString(),timeSource:r.closed_at===null?'UNKNOWN':'SESSION_CLOSE',
       fromUsername:'Demo reader',targetUsername:'Demo creator',targetTitle:r.target_title || 'Reading and exploring',entryCount:1 }));
-    return [...debits,...credits];
+    // Unknown legacy dates sort last. IDs break ties deterministically for pagination.
+    const rows=[...credits,...debits].sort((a,b)=>(b.createTime===null?-Infinity:Date.parse(b.createTime))-(a.createTime===null?-Infinity:Date.parse(a.createTime)) || b.id-a.id);
+    const offset=(pageIndex-1)*pageSize;
+    return {data:rows.slice(offset,offset+pageSize),totalRecords:rows.length,pageIndex,pageSize};
+  }
+  function topSponsors(subject) {
+    const byId=new Map(campaigns().map(c=>[c.id,c]));
+    // Each demo sponsorship is a source; do not merge unrelated sponsors by name.
+    return db.prepare("SELECT campaign,SUM(seconds) total FROM demo_claims WHERE subject=? AND status='SETTLED' GROUP BY campaign ORDER BY total DESC, campaign ASC").all(subject)
+      .map(row=>{const campaign=byId.get(row.campaign);return {
+        sourceType:'BRAND',sourceId:Number(row.campaign),name:campaign?.draft.brandName || 'Sponsor',
+        description:campaign?.draft.description || '',totalSeconds:row.total,
+      };});
   }
   function reserveOperation(subject, kind) {
     if (!publicMode) return;
@@ -144,9 +186,10 @@ function createDemo({ chain, db, secret = crypto.randomBytes(32), origin = proce
         if (![draft.totalTimeMinutes, draft.claimTimeMinutes].every((n) => Number.isSafeInteger(n) && n >= 30 && n <= 10_000_000)
           || draft.totalTimeMinutes % draft.claimTimeMinutes) throw new Error('TIME budget must be divisible by allocation');
         if (draft.mode === 'RETROSPECTIVE' && draft.publicRules.some((r) => r.type === 'brand_visit')) throw new Error('brand visit requires ongoing mode');
+        validateCampaignSchedule(draft,now());
         const prepared = await prepareV2Campaign({ ...draft, minEvents: 3, minDwellSeconds: 90, notBefore: Math.floor(Date.now()/1000)-30*86400 });
         const snapshotReceipt = receiptFor(subject, { id: 'new', policy: prepared.provingPolicy });
-        const result = await serial(() => { reserveOperation(subject,'fund'); return chain.fund(draft, prepared, snapshotReceipt); });
+        const result = await serial(() => { validateCampaignSchedule(draft,now()); reserveOperation(subject,'fund'); return chain.fund(draft, prepared, snapshotReceipt); });
         const campaign = { ...result, owner: subject, snapshotReceipt, draft, policy: prepared.provingPolicy, ruleHash: prepared.ruleHash, manifestHash: prepared.manifestHash };
         db.prepare('INSERT INTO demo_campaigns VALUES(?,?,?)').run(campaign.id, subject, JSON.stringify(campaign));
         return reply({ campaignId: campaign.id, transactionHash: result.transactionHash, transactionUrl: chain.link(result.transactionHash), draft: publicDraft(draft) });
@@ -155,7 +198,10 @@ function createDemo({ chain, db, secret = crypto.randomBytes(32), origin = proce
       if (url.pathname === `${base}/poe/claims` && req.method === 'POST') {
         const input = await body(req);
         const campaign = campaigns().find((c) => c.id === String(input.campaignId));
-        if (!campaign || !eligible(subject,campaign)) throw new Error('Not eligible for this campaign');
+        if (!campaign) throw new Error('Campaign not found');
+        if (scheduleStatus(campaign)==='SCHEDULED') throw new Error('Campaign has not started yet');
+        if (scheduleStatus(campaign)==='ENDED') throw new Error('Campaign has ended');
+        if (!eligible(subject,campaign)) throw new Error('Not eligible for this campaign');
         const epoch = campaign.period ? await chain.epoch(campaign) : 0;
         const existing = db.prepare('SELECT status,tx FROM demo_claims WHERE subject=? AND campaign=? AND epoch=?').get(subject,campaign.id,String(epoch));
         if (existing && existing.status !== 'EXPIRED') throw new Error('Already claimed or awaiting confirmation');
@@ -167,15 +213,15 @@ function createDemo({ chain, db, secret = crypto.randomBytes(32), origin = proce
         db.prepare('UPDATE demo_claims SET tx=?,nullifier=?,expires_at_block=? WHERE subject=? AND campaign=? AND epoch=?').run(result.transactionHash,result.nullifier,result.expiresAtBlock || null,subject,campaign.id,String(epoch));
         // UI receives a pending transaction. Only a canonical approval may credit.
         const job = result.finalize().then(({ eventKey,timeSeconds }) => {
-          db.prepare("UPDATE demo_claims SET status='SETTLED',event_key=?,seconds=? WHERE subject=? AND campaign=? AND epoch=? AND status='PENDING'").run(eventKey,timeSeconds,subject,campaign.id,String(epoch));
+          db.prepare("UPDATE demo_claims SET status='SETTLED',event_key=?,seconds=?,settled_at=? WHERE subject=? AND campaign=? AND epoch=? AND status='PENDING'").run(eventKey,timeSeconds,now(),subject,campaign.id,String(epoch));
         }).catch((error) => { db.prepare("UPDATE demo_claims SET error=? WHERE subject=? AND campaign=? AND epoch=?").run(error.message,subject,campaign.id,String(epoch)); });
         jobs.add(job); job.finally(() => jobs.delete(job));
         return reply({ transactionHash: result.transactionHash, epoch: String(epoch), transactionUrl: chain.link(result.transactionHash) });
       }
       if (url.pathname === `${base}/income/acknowledge` && req.method==='POST') { const current=account(subject); db.prepare('INSERT INTO demo_income_ack VALUES(?,?) ON CONFLICT(subject) DO UPDATE SET seconds=excluded.seconds').run(subject,current.lifetimeEarnedSeconds); return reply(account(subject)); }
       if (url.pathname === `${base}/account`) return reply(account(subject));
-      if (url.pathname === `${base}/ledger/top-sponsors`) return reply([]);
-      if (url.pathname.startsWith(`${base}/ledger`)) { const list = ledger(subject); return reply({ data:list, totalRecords:list.length, pageIndex:1,pageSize:30 }); }
+      if (url.pathname === `${base}/ledger/top-sponsors`) return reply(topSponsors(subject));
+      if (url.pathname === `${base}/ledger` && req.method==='GET') return reply(ledger(subject,url.searchParams));
       if (url.pathname === `${base}/poe/activity`) return reply(true);
       if (/\/sponsors\/\d+\/views$/.test(url.pathname)) {
         const viewId=crypto.randomUUID(); const id=/\/sponsors\/(\d+)/.exec(url.pathname)[1];
@@ -208,7 +254,7 @@ function createDemo({ chain, db, secret = crypto.randomBytes(32), origin = proce
         const elapsed=row.status==='ACTIVE'&&!resuming?Math.max(0,Math.min(30,Math.floor((now()-row.last_seen)/1000))):0;
         const accrued=Math.min(balance,row.accrued+elapsed);
         const charged=closing&&row.status==='ACTIVE'?accrued:0;
-        db.prepare('UPDATE demo_attention SET accrued=?,charged=charged+?,last_seen=?,status=? WHERE id=?').run(closing?0:accrued,charged,now(),closing?'CLOSED':row.status,id);
+        db.prepare('UPDATE demo_attention SET accrued=?,charged=charged+?,last_seen=?,status=?,closed_at=CASE WHEN ? THEN COALESCE(closed_at,?) ELSE closed_at END WHERE id=?').run(closing?0:accrued,charged,now(),closing?'CLOSED':row.status,closing?1:0,now(),id);
         return reply({sessionId:id,status:closing?'CLOSED':row.status,targetType:row.target_type,targetId:row.target_id,targetUserId:900003,serverStartedAt:row.started,
           accruedSeconds:closing?0:accrued,chargedSeconds:charged,balanceSeconds:account(subject).balanceSeconds,duplicate:row.status==='CLOSED',insufficientBalance:accrued>=balance});
       }
@@ -222,7 +268,7 @@ function createDemo({ chain, db, secret = crypto.randomBytes(32), origin = proce
         if(!campaign || !chain.status)continue;
         try {
           const outcome=await chain.status(campaign,row);
-          if(outcome?.eventKey)db.prepare("UPDATE demo_claims SET status='SETTLED',event_key=?,seconds=?,error=NULL WHERE subject=? AND campaign=? AND epoch=? AND status='PENDING'").run(outcome.eventKey,outcome.timeSeconds,row.subject,row.campaign,row.epoch);
+          if(outcome?.eventKey)db.prepare("UPDATE demo_claims SET status='SETTLED',event_key=?,seconds=?,settled_at=?,error=NULL WHERE subject=? AND campaign=? AND epoch=? AND status='PENDING'").run(outcome.eventKey,outcome.timeSeconds,now(),row.subject,row.campaign,row.epoch);
           if(outcome?.failed)db.prepare("UPDATE demo_claims SET status='EXPIRED',error=? WHERE subject=? AND campaign=? AND epoch=?").run(outcome.failed,row.subject,row.campaign,row.epoch);
         } catch(error) { /* RPC errors cannot become credits or trigger resubmission. */ }
       }
