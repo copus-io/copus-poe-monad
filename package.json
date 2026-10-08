@@ -23,7 +23,7 @@
     "circuit:setup:dev": "bash scripts/setup-v2-dev-keys.sh",
     "demo:product": "node scripts/review-demo.js",
     "demo:api": "node services/product-demo.js",
-    "test:product": "node --test test/product-ledger.test.js test/demo-ui-patches.test.js && hardhat test test/product-demo.js",
+    "test:product": "node --test test/product-ledger.test.js test/demo-ui-patches.test.js test/funding-schedule.test.js && hardhat test test/product-demo.js",
     "demo:frontend-dev": "bash scripts/run-product-demo.sh",
     "demo:review": "node scripts/review-demo.js",
     "verify:demo": "node scripts/verify-demo.js",
